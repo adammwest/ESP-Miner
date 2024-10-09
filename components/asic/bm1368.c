@@ -251,12 +251,14 @@ uint8_t BM1368_init(uint64_t frequency, uint16_t asic_count)
     }
 
     int chip_counter = count_asic_chips();
-    chip_counter = 128; //modified
+    
 
     if (chip_counter != asic_count) {
         ESP_LOGE(TAG, "Chip count mismatch. Expected: %d, Actual: %d", asic_count, chip_counter);
         return 0;
     }
+
+    chip_counter = 1; //modified
 
     uint8_t init_cmds[][6] = {
         {0x00, 0xA8, 0x00, 0x07, 0x00, 0x00},
@@ -274,8 +276,8 @@ uint8_t BM1368_init(uint64_t frequency, uint16_t asic_count)
 
      // split the chip address space evenly
     uint8_t address_interval = (uint8_t) (256 / chip_counter);
-    address_interval = 2;
-    uint8_t end_chip_idx = 65;
+    //address_interval = 2;
+    uint8_t end_chip_idx = 1;
     for (uint8_t i = 0; i < end_chip_idx; i++) {
         _set_chip_address(i * address_interval);
     }
