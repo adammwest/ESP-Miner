@@ -251,6 +251,7 @@ uint8_t BM1368_init(uint64_t frequency, uint16_t asic_count)
     }
 
     int chip_counter = count_asic_chips();
+    chip_counter = 128; //modified
 
     if (chip_counter != asic_count) {
         ESP_LOGE(TAG, "Chip count mismatch. Expected: %d, Actual: %d", asic_count, chip_counter);
@@ -271,10 +272,16 @@ uint8_t BM1368_init(uint64_t frequency, uint16_t asic_count)
         _send_BM1368(TYPE_CMD | GROUP_ALL | CMD_WRITE, init_cmds[i], 6, false);
     }
 
+     // split the chip address space evenly
     uint8_t address_interval = (uint8_t) (256 / chip_counter);
-    for (int i = 0; i < chip_counter; i++) {
+    address_interval = 2;
+    uint8_t end_chip_idx = 65;
+    for (uint8_t i = 0; i < end_chip_idx; i++) {
         _set_chip_address(i * address_interval);
     }
+    ESP_LOGI(TAG, "CHIP address_interval %i", address_interval);
+    ESP_LOGI(TAG, "CHIP virtual_chain_length %i", end_chip_idx);
+    ESP_LOGI(TAG, "CHIP chips_detected %i", chip_counter);
 
     for (int i = 0; i < chip_counter; i++) {
         uint8_t chip_init_cmds[][6] = {
@@ -295,7 +302,10 @@ uint8_t BM1368_init(uint64_t frequency, uint16_t asic_count)
 
     do_frequency_ramp_up((float)frequency);
 
-    _send_BM1368(TYPE_CMD | GROUP_ALL | CMD_WRITE, (uint8_t[]){0x00, 0x10, 0x00, 0x00, 0x15, 0xa4}, 6, false);
+    unsigned char set_10_hash_counting[6] = {0x00, 0x10, 0x00, 0x01, 0x00, 0x00}; //custom
+    _send_BM1368((TYPE_CMD | GROUP_ALL | CMD_WRITE), set_10_hash_counting, 6, BM1368_SERIALTX_DEBUG);
+    ESP_LOGI(TAG, "CHIP hcn %02x%02x%02x%02x ", set_10_hash_counting[2], set_10_hash_counting[3], set_10_hash_counting[4], set_10_hash_counting[5]);
+
     BM1368_set_version_mask(STRATUM_DEFAULT_VERSION_MASK);
 
     ESP_LOGI(TAG, "%i chip(s) detected on the chain, expected %i", chip_counter, asic_count);

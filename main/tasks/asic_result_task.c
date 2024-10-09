@@ -24,6 +24,7 @@ void ASIC_result_task(void *pvParameters)
         {
             continue;
         }
+        uint32_t nonce = asic_result->nonce;
 
         uint8_t job_id = asic_result->job_id;
 
@@ -39,8 +40,12 @@ void ASIC_result_task(void *pvParameters)
             asic_result->nonce,
             asic_result->rolled_version);
 
-        //log the ASIC response
-        ESP_LOGI(TAG, "Ver: %08" PRIX32 " Nonce %08" PRIX32 " diff %.1f of %ld.", asic_result->rolled_version, asic_result->nonce, nonce_diff, GLOBAL_STATE->ASIC_TASK_MODULE.active_jobs[job_id]->pool_diff);
+        uint32_t pool_difficulty = GLOBAL_STATE->ASIC_TASK_MODULE.active_jobs[job_id]->pool_diff;
+        uint32_t vmask = asic_result->rolled_version ^ GLOBAL_STATE->ASIC_TASK_MODULE.active_jobs[job_id]->version;
+        //uint32_t  = (reverse_uint16(vmask));
+        
+        //ESP_LOGI(TAG, "Ver: %08" PRIX32 " Nonce %08" PRIX32 " diff %.1f of %ld.", asic_result->rolled_version, asic_result->nonce, nonce_diff, pool_difficulty);
+        ESP_LOGI(TAG, "Ver: %08" PRIX32 " Nonce %08" PRIX32 " diff %.1f of %ld.", vmask, nonce, nonce_diff, pool_difficulty);
 
         if (nonce_diff > GLOBAL_STATE->ASIC_TASK_MODULE.active_jobs[job_id]->pool_diff)
         {

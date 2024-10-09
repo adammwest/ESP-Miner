@@ -108,8 +108,12 @@ void app_main(void)
                                         .send_work_fn = BM1368_send_work,
                                         .set_version_mask = BM1368_set_version_mask};
         //GLOBAL_STATE.asic_job_frequency_ms = (NONCE_SPACE / (double) (GLOBAL_STATE.POWER_MANAGEMENT_MODULE.frequency_value * BM1368_CORE_COUNT * 1000)) / (double) GLOBAL_STATE.asic_count; // version-rolling so Small Cores have different Nonce Space
-        GLOBAL_STATE.asic_job_frequency_ms = ASIC_BM1368_JOB_FREQUENCY_MS; //500ms
+        int max_task_wait = 600*1000+0;
+        GLOBAL_STATE.asic_job_frequency_ms = max_task_wait; //ms
         GLOBAL_STATE.initial_ASIC_difficulty = BM1368_INITIAL_DIFFICULTY;
+        ESP_LOGI(TAG, "CHIP max_task_wait %i", max_task_wait);
+        ESP_LOGI(TAG, "CHIP chip_diff %i", BM1368_INITIAL_DIFFICULTY);
+        ESP_LOGI(TAG, "CHIP type BM1368");
 
         GLOBAL_STATE.ASIC_functions = ASIC_functions;
     } else if (strcmp(GLOBAL_STATE.asic_model_str, "BM1397") == 0) {
