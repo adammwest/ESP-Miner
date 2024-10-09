@@ -402,6 +402,34 @@ static uint32_t reverse_uint32(uint32_t val)
            ((val << 24) & 0xff000000);
 }
 
+// Function to manually copy struct elements to a char array
+void struct_to_char_array(const asic_result *result, unsigned char *array) {
+    size_t offset = 0;
+
+    // Copy preamble
+    memcpy(array + offset, result->preamble, sizeof(result->preamble));
+    offset += sizeof(result->preamble);
+
+    // Copy nonce
+    memcpy(array + offset, &result->nonce, sizeof(result->nonce));
+    offset += sizeof(result->nonce);
+
+    // Copy midstate_num
+    array[offset] = result->midstate_num;
+    offset += sizeof(result->midstate_num);
+
+    // Copy job_id
+    array[offset] = result->job_id;
+    offset += sizeof(result->job_id);
+
+    // Copy version
+    memcpy(array + offset, &result->version, sizeof(result->version));
+    offset += sizeof(result->version);
+
+    // Copy crc
+    array[offset] = 128;//result->crc;
+}
+
 task_result * BM1368_proccess_work(void * pvParameters)
 {
     asic_result * asic_result = BM1368_receive_work();
@@ -414,6 +442,14 @@ task_result * BM1368_proccess_work(void * pvParameters)
     uint8_t core_id = (uint8_t)((reverse_uint32(asic_result->nonce) >> 25) & 0x7f);
     uint8_t small_core_id = asic_result->job_id & 0x0f;
     uint32_t version_bits = (reverse_uint16(asic_result->version) << 13);
+
+    unsigned char *buf = malloc (sizeof(unsigned char));
+    struct_to_char_array(asic_result,buf);
+    int crc5_check = crc5_offset(buf+2,9,-5);
+    int crc = asic_result->crc-128;
+    ESP_LOGI(TAG, "crc %i %i",crc,crc5_check);
+    free(buf);
+
     ESP_LOGI(TAG, "Job ID: %02X, Core: %d/%d, Ver: %08" PRIX32, job_id, core_id, small_core_id, version_bits);
 
     GlobalState * GLOBAL_STATE = (GlobalState *) pvParameters;
