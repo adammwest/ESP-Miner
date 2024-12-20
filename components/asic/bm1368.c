@@ -402,6 +402,78 @@ asic_result * BM1368_receive_work(void)
     return (asic_result *) asic_response_buffer;
 }
 
+
+int BM1368_proccess_work_custom(void * pvParameters,int timeout_ms, bm_job *job)
+{
+    GlobalState * GLOBAL_STATE = (GlobalState *) pvParameters;
+    int buf_size = 11*max_nonces;
+    uint8_t *asic_response_buffer = malloc(sizeof(uint8_t)*buf_size);
+
+    //gartunteed timeout and safe x%11==0 buf size
+    // the best case is it behaves exactly as BM1368_proccess_work would 
+    // the worst cases are handelled better
+    // 1. a offset misalignment can be recoverd
+    // [00 aa 55 data ] [crc aa 55 ...]
+    // 2. a wrong size is recoverable 
+    // timeouts are garunteed
+    // easy identify low entropy messages
+
+
+    int received = uart_read_bytes_timeout(UART_NUM_1, asic_response_buffer, buf_size, (float)timeout_ms);
+
+    if (received < 0) {
+        ESP_LOGI(TAG, "Error in serial RX");
+        GLOBAL_STATE->rx_call_fail += 1;
+        return 0;
+    } else if (received == 0) {
+        GLOBAL_STATE->rx_call_ok += 1;
+        return 0;
+    } else if (received <11){
+        GLOBAL_STATE->rx_call_ok += 1;
+        //lost nonce here potentially
+        return 0;
+    } else {
+        GLOBAL_STATE->rx_call_ok += 1;
+    }
+
+    float nonces_expected = (float)received/11;
+    int nonces_retrieved = 0;
+    int unonce_idx = 0;
+
+    //check all bytes for nonce
+    for (int i=0;i<received;i++) {
+        if ((asic_response_buffer[i] == 0xAA) && (asic_response_buffer[i+1] == 0x55)) {
+            uint8_t asic_attempt[11] = {0,0,0,0,0,0,0,0,0,0,0};
+            for (int j=0;j<11;j++) {
+                asic_attempt[j] = asic_response_buffer[i+j];
+            }
+            asic_result * asic_result = asic_attempt;
+            uint32_t version_bits = (reverse_uint16(asic_result->version) << 13);
+            uint32_t rolled_version = job->version | version_bits;
+            double nonce_diff = test_nonce_value(job, asic_result->nonce, rolled_version);
+
+            if (nonce_diff>1) {
+                nonces_retrieved+=1;
+            }
+        }
+        if (i+11>=received) break;
+    }
+    
+    //check if we convert nonce successfully
+    float chip_rx_yeild = (float)nonces_retrieved/nonces_expected;
+    *rx_yeild_val = chip_rx_yeild;
+    ESP_LOGI(TAG, "chip rx yield %.4f nonce retrival %i/%.2f  ", chip_rx_yeild, nonces_retrieved,nonces_expected);
+    GLOBAL_STATE->ticket_nonces += nonces_retrieved;
+
+
+    result.job_id = job_id;
+    result.nonce = asic_result->nonce;
+    result.rolled_version = rolled_version;
+    return &result;
+
+}
+
+
 static uint16_t reverse_uint16(uint16_t num)
 {
     return (num >> 8) | (num << 8);

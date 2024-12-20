@@ -67,6 +67,70 @@ int SERIAL_send(uint8_t *data, int len, bool debug)
     return uart_write_bytes(UART_NUM_1, (const char *)data, len);
 }
 
+/*
+more advanced timeout rx function
+*/
+int uart_read_bytes_timeout(uart_port_t uart_num, void *buf, uint32_t length, float timeout_ms)  {
+    //garuntees timeout waiting size 11 is the nonce message len
+    //attampts to garuntees bytes read %11 = 0
+
+    //we could use uart_get_buffered_data_len to get the length of the buffer
+    //to get buf %11==0 only if there is enough time left
+
+    int buf_idx = 0;
+    uint64_t job_start = esp_timer_get_time();
+    float time_left_ms = timeout_ms;
+
+    while(true) {
+        if (time_left_ms<0.01) break; //time limit
+        if (buf_idx+1>=length) break; //size limit
+
+        int recieved = uart_read_bytes(uart_num,buf+buf_idx,1, pdMS_TO_TICKS(time_left_ms));
+
+        if (recieved<0) { 
+            // if error add a small timeout
+            vTaskDelay(pdMS_TO_TICKS(10));
+
+            size_t len_test = 0;
+            uart_get_buffered_data_len(UART_NUM_1, &len_test);
+            if (len_test==0) SERIAL_clear_buffer();
+
+        } else if (recieved>0) {
+            buf_idx+=recieved;
+        }
+
+        uint64_t job_end = esp_timer_get_time();
+        int64_t job_elapsed_us = job_end-job_start;
+        float job_elapsed_ms = (float)(job_elapsed_us)/1000.0;
+        time_left_ms = timeout_ms-job_elapsed_ms;
+        
+    }
+    
+    // now deal with the extra bytes that could be in buf
+    size_t extra_len = 0;
+    uart_get_buffered_data_len(UART_NUM_1, &extra_len);
+    if (extra_len>0) {
+        //get the buf length round down to 11 bytes
+        int bytes_left = extra_len-(extra_len+buf_idx)%11;
+        int recieved = uart_read_bytes(uart_num,buf+buf_idx,bytes_left, pdMS_TO_TICKS(10));
+        buf_idx += recieved;
+    } else {
+        // here we have a x % 11 !=0 situation, uart_get_buffered_data_len has failed 
+        // this is offset by some bytes we lose the last nonce
+    }
+    //add in serial debug 
+    
+    uint64_t job_end = esp_timer_get_time();
+    int64_t job_elapsed_us = job_end-job_start;
+    float job_elapsed_ms = (float)(job_elapsed_us)/1000.0;
+    time_left_ms = timeout_ms-job_elapsed_ms;
+    //ESP_LOGI(TAG, "buf %i time_left_ms %.3f/%.3f",buf_idx,time_left_ms,timeout_ms);
+
+    //printf("rx: ");
+    //prettyHex((unsigned char*) buf, buf_idx);
+    return buf_idx;
+}
+
 /// @brief waits for a serial response from the device
 /// @param buf buffer to read data into
 /// @param buf number of ms to wait before timing out
