@@ -1,4 +1,5 @@
 #include "bm1368.h"
+
 #include "crc.h"
 #include "global_state.h"
 #include "serial.h"
@@ -14,7 +15,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define BM1368_RST_PIN GPIO_NUM_1
+#ifdef CONFIG_GPIO_ASIC_RESET
+#define GPIO_ASIC_RESET CONFIG_GPIO_ASIC_RESET
+#else
+#define GPIO_ASIC_RESET 1
+#endif
 
 #define TYPE_JOB 0x20
 #define TYPE_CMD 0x40
@@ -44,6 +49,8 @@
 #define TICKET_MASK 0x14
 #define MISC_CONTROL 0x18
 
+#define BM1368_TIMEOUT_MS 10000
+#define BM1368_TIMEOUT_THRESHOLD 2
 typedef struct __attribute__((__packed__))
 {
     uint8_t preamble[2];
@@ -119,9 +126,9 @@ void BM1368_set_version_mask(uint32_t version_mask)
 
 static void _reset(void)
 {
-    gpio_set_level(BM1368_RST_PIN, 0);
+    gpio_set_level(GPIO_ASIC_RESET, 0);
     vTaskDelay(100 / portTICK_PERIOD_MS);
-    gpio_set_level(BM1368_RST_PIN, 1);
+    gpio_set_level(GPIO_ASIC_RESET, 1);
     vTaskDelay(100 / portTICK_PERIOD_MS);
 }
 
@@ -240,8 +247,8 @@ uint8_t BM1368_init(uint64_t frequency, uint16_t asic_count)
 
     memset(asic_response_buffer, 0, CHUNK_SIZE);
 
-    esp_rom_gpio_pad_select_gpio(BM1368_RST_PIN);
-    gpio_set_direction(BM1368_RST_PIN, GPIO_MODE_OUTPUT);
+    esp_rom_gpio_pad_select_gpio(GPIO_ASIC_RESET);
+    gpio_set_direction(GPIO_ASIC_RESET, GPIO_MODE_OUTPUT);
 
     _reset();
 
@@ -263,7 +270,7 @@ uint8_t BM1368_init(uint64_t frequency, uint16_t asic_count)
         {0x00, 0x3C, 0x80, 0x00, 0x8b, 0x00},
         {0x00, 0x3C, 0x80, 0x00, 0x80, 0x18},
         {0x00, 0x14, 0x00, 0x00, 0x00, 0xFF},
-        {0x00, 0x54, 0x00, 0x00, 0x00, 0x03},
+        {0x00, 0x54, 0x00, 0x00, 0x00, 0x03}, //Analog Mux
         {0x00, 0x58, 0x02, 0x11, 0x11, 0x11}
     };
 
@@ -291,7 +298,7 @@ uint8_t BM1368_init(uint64_t frequency, uint16_t asic_count)
         vTaskDelay(pdMS_TO_TICKS(500));
     }
 
-    BM1368_set_job_difficulty_mask(BM1368_INITIAL_DIFFICULTY);
+    BM1368_set_job_difficulty_mask(BM1368_ASIC_DIFFICULTY);
 
     do_frequency_ramp_up((float)frequency);
 
@@ -365,17 +372,28 @@ void BM1368_send_work(void * pvParameters, bm_job * next_bm_job)
     ESP_LOGI(TAG, "Send Job: %02X", job.job_id);
     #endif
 
-    _send_BM1368((TYPE_JOB | GROUP_SINGLE | CMD_WRITE), &job, sizeof(BM1368_job), BM1368_DEBUG_WORK);
+    _send_BM1368((TYPE_JOB | GROUP_SINGLE | CMD_WRITE), (uint8_t *)&job, sizeof(BM1368_job), BM1368_DEBUG_WORK);
 }
 
 asic_result * BM1368_receive_work(void)
 {
-    int received = SERIAL_rx(asic_response_buffer, 11, 60000);
+    // wait for a response
+    int received = SERIAL_rx(asic_response_buffer, 11, BM1368_TIMEOUT_MS);
 
-    if (received < 0) {
-        ESP_LOGI(TAG, "Error in serial RX");
+    bool uart_err = received < 0;
+    bool uart_timeout = received == 0;
+    uint8_t asic_timeout_counter = 0;
+
+    // handle response
+    if (uart_err) {
+        ESP_LOGI(TAG, "UART Error in serial RX");
         return NULL;
-    } else if (received == 0) {
+    } else if (uart_timeout) {
+        if (asic_timeout_counter >= BM1368_TIMEOUT_THRESHOLD) {
+            ESP_LOGE(TAG, "ASIC not sending data");
+            asic_timeout_counter = 0;
+        }
+        asic_timeout_counter++;
         return NULL;
     }
 
@@ -455,7 +473,7 @@ task_result * BM1368_proccess_work(void * pvParameters)
     GlobalState * GLOBAL_STATE = (GlobalState *) pvParameters;
 
     if (GLOBAL_STATE->valid_jobs[job_id] == 0) {
-        ESP_LOGE(TAG, "Invalid job found, 0x%02X", job_id);
+        ESP_LOGW(TAG, "Invalid job found, 0x%02X", job_id);
         return NULL;
     }
 

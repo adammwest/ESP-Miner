@@ -1,8 +1,8 @@
 import { HttpErrorResponse, HttpEventType } from '@angular/common/http';
-import { Component } from '@angular/core';
+import { Component, ViewChild } from '@angular/core';
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { ToastrService } from 'ngx-toastr';
-import { FileUploadHandlerEvent } from 'primeng/fileupload';
+import { FileUploadHandlerEvent, FileUpload } from 'primeng/fileupload';
 import { map, Observable, shareReplay, startWith } from 'rxjs';
 import { GithubUpdateService } from 'src/app/services/github-update.service';
 import { LoadingService } from 'src/app/services/loading.service';
@@ -30,6 +30,9 @@ export class SettingsComponent {
   public latestRelease$: Observable<any>;
 
   public info$: Observable<any>;
+
+  @ViewChild('firmwareUpload') firmwareUpload!: FileUpload;
+  @ViewChild('websiteUpload') websiteUpload!: FileUpload;
 
   constructor(
     private fb: FormBuilder,
@@ -71,8 +74,6 @@ export class SettingsComponent {
           ]],
           stratumUser: [info.stratumUser, [Validators.required]],
           stratumPassword: ['*****', [Validators.required]],
-          ssid: [info.ssid, [Validators.required]],
-          wifiPass: ['*****'],
           coreVoltage: [info.coreVoltage, [Validators.required]],
           frequency: [info.frequency, [Validators.required]],
           autofanspeed: [info.autofanspeed == 1, [Validators.required]],
@@ -116,12 +117,6 @@ export class SettingsComponent {
     form.invertfanpolarity = form.invertfanpolarity == true ? 1 : 0;
     form.autofanspeed = form.autofanspeed == true ? 1 : 0;
 
-    // Allow an empty wifi password
-    form.wifiPass = form.wifiPass == null ? '' : form.wifiPass;
-
-    if (form.wifiPass === '*****') {
-      delete form.wifiPass;
-    }
     if (form.stratumPassword === '*****') {
       delete form.stratumPassword;
     }
@@ -140,7 +135,8 @@ export class SettingsComponent {
 
   otaUpdate(event: FileUploadHandlerEvent) {
     const file = event.files[0];
-
+    this.firmwareUpload.clear(); // clear the file upload component
+    
     if (file.name != 'esp-miner.bin') {
       this.toastrService.error('Incorrect file, looking for esp-miner.bin.', 'Error');
       return;
@@ -160,9 +156,13 @@ export class SettingsComponent {
               this.toastrService.error(event.statusText, 'Error');
             }
           }
+          else if (event instanceof HttpErrorResponse)
+          {
+            this.toastrService.error(event.error, 'Error');
+          }
         },
         error: (err) => {
-          this.toastrService.error('Uploaded Error', 'Error');
+          this.toastrService.error(err.error, 'Error');
         },
         complete: () => {
           this.firmwareUpdateProgress = null;
@@ -172,6 +172,8 @@ export class SettingsComponent {
 
   otaWWWUpdate(event: FileUploadHandlerEvent) {
     const file = event.files[0];
+    this.websiteUpload.clear(); // clear the file upload component
+
     if (file.name != 'www.bin') {
       this.toastrService.error('Incorrect file, looking for www.bin.', 'Error');
       return;
@@ -186,18 +188,23 @@ export class SettingsComponent {
             this.websiteUpdateProgress = Math.round((event.loaded / (event.total as number)) * 100);
           } else if (event.type === HttpEventType.Response) {
             if (event.ok) {
+              this.toastrService.success('Website updated', 'Success!');
               setTimeout(() => {
-                this.toastrService.success('Website updated', 'Success!');
                 window.location.reload();
-              }, 1000);
-
+              }, 2000);
             } else {
               this.toastrService.error(event.statusText, 'Error');
             }
           }
+          else if (event instanceof HttpErrorResponse)
+          {
+            const errorMessage = event.error?.message || event.message || 'Unknown error occurred';
+            this.toastrService.error(errorMessage, 'Error');
+          }
         },
         error: (err) => {
-          this.toastrService.error('Upload Error', 'Error');
+          const errorMessage = err.error?.message || err.message || 'Unknown error occurred';
+          this.toastrService.error(errorMessage, 'Error');
         },
         complete: () => {
           this.websiteUpdateProgress = null;
@@ -211,9 +218,4 @@ export class SettingsComponent {
     });
     this.toastr.success('Success!', 'Bitaxe restarted');
   }
-
-
-
-
-
 }
