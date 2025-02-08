@@ -86,7 +86,7 @@ static void _send_BM1368(uint8_t header, uint8_t * data, uint8_t data_len, bool 
         buf[4 + data_len] = (crc16_total >> 8) & 0xFF;
         buf[5 + data_len] = crc16_total & 0xFF;
     } else {
-        buf[4 + data_len] = crc5(buf + 2, data_len + 2);
+        buf[4 + data_len] = crc5(buf + 2, data_len + 2, 0);
     }
 
     SERIAL_send(buf, total_length, debug);
@@ -420,33 +420,6 @@ static uint32_t reverse_uint32(uint32_t val)
            ((val << 24) & 0xff000000);
 }
 
-// Function to manually copy struct elements to a char array
-void struct_to_char_array(const asic_result *result, unsigned char *array) {
-    size_t offset = 0;
-
-    // Copy preamble
-    memcpy(array + offset, result->preamble, sizeof(result->preamble));
-    offset += sizeof(result->preamble);
-
-    // Copy nonce
-    memcpy(array + offset, &result->nonce, sizeof(result->nonce));
-    offset += sizeof(result->nonce);
-
-    // Copy midstate_num
-    array[offset] = result->midstate_num;
-    offset += sizeof(result->midstate_num);
-
-    // Copy job_id
-    array[offset] = result->job_id;
-    offset += sizeof(result->job_id);
-
-    // Copy version
-    memcpy(array + offset, &result->version, sizeof(result->version));
-    offset += sizeof(result->version);
-
-    // Copy crc
-    array[offset] = 128;//result->crc;
-}
 
 task_result * BM1368_proccess_work(void * pvParameters)
 {
@@ -456,17 +429,16 @@ task_result * BM1368_proccess_work(void * pvParameters)
         return NULL;
     }
 
+    if (crc_test(asic_result)) {
+        crc_fail_count++;
+        ESP_LOGW(TAG, "Invalid nonce crc5, total=%i", crc_fail_count);
+        return NULL;
+    }
+
     uint8_t job_id = (asic_result->job_id & 0xf0) >> 1;
     uint8_t core_id = (uint8_t)((reverse_uint32(asic_result->nonce) >> 25) & 0x7f);
     uint8_t small_core_id = asic_result->job_id & 0x0f;
     uint32_t version_bits = (reverse_uint16(asic_result->version) << 13);
-
-    unsigned char *buf = malloc (sizeof(unsigned char));
-    struct_to_char_array(asic_result,buf);
-    int crc5_check = crc5_offset(buf+2,9,-5);
-    int crc = asic_result->crc-128;
-    ESP_LOGI(TAG, "crc %i %i",crc,crc5_check);
-    free(buf);
 
     ESP_LOGI(TAG, "Job ID: %02X, Core: %d/%d, Ver: %08" PRIX32, job_id, core_id, small_core_id, version_bits);
 

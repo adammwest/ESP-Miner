@@ -4,59 +4,11 @@
 
 #include "bm1397.h"
 
-/* compute crc5 over given number of bytes */
-// adapted from https://mightydevices.com/index.php/2018/02/reverse-engineering-antminer-s1/
-uint8_t crc5(uint8_t *data, uint8_t len)
-{
-	uint8_t i, j, k, index = 0;
-	uint8_t crc = CRC5_MASK;
-	/* registers */
-	uint8_t crcin[5] = {1, 1, 1, 1, 1};
-	uint8_t crcout[5] = {1, 1, 1, 1, 1};
-	uint8_t din = 0;
-
-	len *= 8;
-
-	/* push data bits */
-	for (j = 0x80, k = 0, i = 0; i < len; i++)
-	{
-		/* input bit */
-		din = (data[index] & j) != 0;
-		/* shift register */
-		crcout[0] = crcin[4] ^ din;
-		crcout[1] = crcin[0];
-		crcout[2] = crcin[1] ^ crcin[4] ^ din;
-		crcout[3] = crcin[2];
-		crcout[4] = crcin[3];
-		/* next bit */
-		j >>= 1, k++;
-		/* next byte */
-		if (k == 8)
-			j = 0x80, k = 0, index++;
-		/* apply new shift register value */
-		memcpy(crcin, crcout, 5);
-		// crcin = crcout[0];
-	}
-
-	crc = 0;
-	/* extract bitmask from register */
-	if (crcin[4])
-		crc |= 0x10;
-	if (crcin[3])
-		crc |= 0x08;
-	if (crcin[2])
-		crc |= 0x04;
-	if (crcin[1])
-		crc |= 0x02;
-	if (crcin[0])
-		crc |= 0x01;
-
-	return crc;
-}
+static extern int crc_fail_count = 0;
 
 /* compute crc5 over given number of bytes */
 // adapted from https://mightydevices.com/index.php/2018/02/reverse-engineering-antminer-s1/
-uint8_t crc5_offset(uint8_t *data, uint8_t len,int offset)
+uint8_t crc5(uint8_t *data, uint8_t len,int offset)
 {
 	uint8_t i, j, k, index = 0;
 	uint8_t crc = CRC5_MASK;
@@ -162,4 +114,38 @@ uint16_t crc16_false(uint8_t *buffer, uint16_t len)
 		crc = crc16_table[((crc >> 8) ^ (*buffer++)) & 0xFF] ^ (crc << 8);
 
 	return crc;
+}
+
+// function to test that chip is making correct crc5 in nonces
+bool crc_test(const asic_result *result) {
+	unsigned char *crc_buf = malloc (sizeof(unsigned char));
+	size_t offset = 0;
+
+    // Copy preamble
+    memcpy(crc_buf + offset, result->preamble, sizeof(result->preamble));
+    offset += sizeof(result->preamble);
+
+    // Copy nonce
+    memcpy(crc_buf + offset, &result->nonce, sizeof(result->nonce));
+    offset += sizeof(result->nonce);
+
+    // Copy midstate_num
+    crc_buf[offset] = result->midstate_num;
+    offset += sizeof(result->midstate_num);
+
+    // Copy job_id
+    crc_buf[offset] = result->job_id;
+    offset += sizeof(result->job_id);
+
+    // Copy version
+    memcpy(crc_buf + offset, &result->version, sizeof(result->version));
+    offset += sizeof(result->version);
+
+    // Copy crc
+    crc_buf[offset] = 128;
+
+	int crc_expected = crc5_offset(crc_buf+2,9,-5);
+	free(crc_buf);
+
+	return result->crc-128==crc_expected;
 }

@@ -102,7 +102,7 @@ static void _send_BM1397(uint8_t header, uint8_t *data, uint8_t data_len, bool d
     }
     else
     {
-        buf[4 + data_len] = crc5(buf + 2, data_len + 2);
+        buf[4 + data_len] = crc5(buf + 2, data_len + 2, 0);
     }
 
     // send serial data
@@ -446,6 +446,12 @@ task_result *BM1397_proccess_work(void *pvParameters)
     if (asic_result == NULL)
     {
         ESP_LOGI(TAG, "return null");
+        return NULL;
+    }
+
+    if (crc_test(asic_result)) {
+        crc_fail_count++;
+        ESP_LOGW(TAG, "Invalid nonce crc5, total=%i", crc_fail_count);
         return NULL;
     }
 
