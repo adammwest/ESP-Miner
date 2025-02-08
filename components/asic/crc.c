@@ -4,7 +4,7 @@
 
 #include "bm1397.h"
 
-static extern int crc_fail_count = 0;
+int crc_fail_count = 0;
 
 /* compute crc5 over given number of bytes */
 // adapted from https://mightydevices.com/index.php/2018/02/reverse-engineering-antminer-s1/
@@ -116,36 +116,12 @@ uint16_t crc16_false(uint8_t *buffer, uint16_t len)
 	return crc;
 }
 
-// function to test that chip is making correct crc5 in nonces
-bool crc_test(const asic_result *result) {
-	unsigned char *crc_buf = malloc (sizeof(unsigned char));
-	size_t offset = 0;
-
-    // Copy preamble
-    memcpy(crc_buf + offset, result->preamble, sizeof(result->preamble));
-    offset += sizeof(result->preamble);
-
-    // Copy nonce
-    memcpy(crc_buf + offset, &result->nonce, sizeof(result->nonce));
-    offset += sizeof(result->nonce);
-
-    // Copy midstate_num
-    crc_buf[offset] = result->midstate_num;
-    offset += sizeof(result->midstate_num);
-
-    // Copy job_id
-    crc_buf[offset] = result->job_id;
-    offset += sizeof(result->job_id);
-
-    // Copy version
-    memcpy(crc_buf + offset, &result->version, sizeof(result->version));
-    offset += sizeof(result->version);
-
-    // Copy crc
-    crc_buf[offset] = 128;
-
-	int crc_expected = crc5_offset(crc_buf+2,9,-5);
-	free(crc_buf);
-
-	return result->crc-128==crc_expected;
+// Function to test the CRC given from chip versus expected
+bool crc_test(const unsigned char *data, int buf_len) {
+	unsigned char crc_buf[buf_len];
+	int data_size = buf_len-2;
+    memcpy(crc_buf, data, buf_len);
+    crc_buf[buf_len - 1] = 128;  // Set the last byte (CRC byte)
+    int crc_expected = crc5(crc_buf + 2, data_size, -5);  // Skip first 2 bytes
+    return (crc_buf[data_size - 1] - 128 == crc_expected);
 }

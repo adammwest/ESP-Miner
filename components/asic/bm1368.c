@@ -68,6 +68,8 @@ static task_result result;
 
 static float current_frequency = 56.25;
 
+extern int crc_fail_count;
+
 static void _send_BM1368(uint8_t header, uint8_t * data, uint8_t data_len, bool debug)
 {
     packet_type_t packet_type = (header & TYPE_JOB) ? JOB_PACKET : CMD_PACKET;
@@ -420,7 +422,6 @@ static uint32_t reverse_uint32(uint32_t val)
            ((val << 24) & 0xff000000);
 }
 
-
 task_result * BM1368_proccess_work(void * pvParameters)
 {
     asic_result * asic_result = BM1368_receive_work();
@@ -429,7 +430,7 @@ task_result * BM1368_proccess_work(void * pvParameters)
         return NULL;
     }
 
-    if (crc_test(asic_result)) {
+    if (crc_test((unsigned char *)asic_result,11)) {
         crc_fail_count++;
         ESP_LOGW(TAG, "Invalid nonce crc5, total=%i", crc_fail_count);
         return NULL;

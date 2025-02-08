@@ -68,6 +68,8 @@ static const char * TAG = "bm1370Module";
 static uint8_t asic_response_buffer[SERIAL_BUF_SIZE];
 static task_result result;
 
+extern int crc_fail_count;
+
 /// @brief
 /// @param ftdi
 /// @param header
@@ -507,7 +509,7 @@ task_result * BM1370_proccess_work(void * pvParameters)
         return NULL;
     }
 
-    if (crc_test(asic_result)) {
+    if (crc_test((unsigned char *)asic_result,11)) {
         crc_fail_count++;
         ESP_LOGW(TAG, "Invalid nonce crc5, total=%i", crc_fail_count);
         return NULL;

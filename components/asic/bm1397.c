@@ -67,6 +67,8 @@ static uint8_t asic_response_buffer[SERIAL_BUF_SIZE];
 static uint32_t prev_nonce = 0;
 static task_result result;
 
+extern int crc_fail_count;
+
 /// @brief
 /// @param ftdi
 /// @param header
@@ -449,7 +451,7 @@ task_result *BM1397_proccess_work(void *pvParameters)
         return NULL;
     }
 
-    if (crc_test(asic_result)) {
+    if (crc_test((unsigned char *)asic_result,9)) {
         crc_fail_count++;
         ESP_LOGW(TAG, "Invalid nonce crc5, total=%i", crc_fail_count);
         return NULL;
