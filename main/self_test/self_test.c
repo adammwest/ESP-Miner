@@ -459,6 +459,7 @@ void self_test(void * pvParameters)
     bm_job job = construct_bm_job(&notify_message, merkle_root, 0x1fffe000);
 
     uint8_t difficulty_mask = 8;
+    get_hashrate_err();
 
     //(*GLOBAL_STATE->ASIC_functions.set_difficulty_mask_fn)(difficulty_mask);
     ASIC_set_job_difficulty_mask(GLOBAL_STATE, difficulty_mask);
@@ -473,6 +474,8 @@ void self_test(void * pvParameters)
     double duration = 0;
     double hash_rate = 0;
     double hashtest_timeout = 5;
+
+    
 
     while (duration < hashtest_timeout) {
         task_result * asic_result = ASIC_process_work(GLOBAL_STATE);
@@ -511,6 +514,9 @@ void self_test(void * pvParameters)
             break;
         default:
     }
+    ASIC_set_job_difficulty_mask(GLOBAL_STATE, 256);
+    SERIAL_clear_buffer();
+    get_hashrate_err();
 
     if (hash_rate < hashrate_test_percentage_target * (expected_hashrate_mhs/1000.0) ){
         display_msg("HASHRATE:FAIL", GLOBAL_STATE);

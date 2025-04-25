@@ -368,7 +368,7 @@ void BM1370_get_counters(GlobalState * gstate)
 
     // Get counters.
     _send_BM1370(CSR, (uint8_t[]){0x00, BM_NONCE_ERROR_CNT}, 2, true);
-    resp = _get_response(0x00, BM_NONCE_ERROR_CNT, 11);
+    resp = SERIAL_rx(0x00, BM_NONCE_ERROR_CNT, 11);
     if (resp)
         cnt_err = _u8be_to_u32le(resp->data);
 
@@ -399,6 +399,60 @@ void BM1370_get_counters(GlobalState * gstate)
     }
 }
 
+
+
+float * _BM1370_get_hashrate_counter_registers() {
+
+    // CLEAR 
+    _send_BM1370((TYPE_CMD | GROUP_SINGLE | CMD_WRITE), (uint8_t[]){0x00, BM_UNK_CNT_90, 0x00, 0x00, 0x00, 0x00}, 6, true);
+    cnt_tmr[0] = esp_timer_get_time();
+    for (int i = 0; i < 5; i ++) {
+        _send_BM1370((TYPE_CMD | GROUP_SINGLE | CMD_WRITE), (uint8_t[]){0x00, BM_UNK_CNT_88 + i, 0x00, 0x00, 0x00, 0x00}, 6, true);
+        cnt_tmr[1 + i] = esp_timer_get_time();
+    }
+
+    vTaskDelay(2000 / portTICK_PERIOD_MS);
+
+
+
+    uint32_t freq_khz = (uint32_t)gstate->POWER_MANAGEMENT_MODULE.frequency_value * 1000;
+    uint32_t  cnt = 0;
+    _send_BM1370((TYPE_CMD | GROUP_SINGLE | CMD_WRITE), (uint8_t[]){0x00, _register}, 2, true);
+    
+    char uint8_t buf[11] = {0};
+
+    // Get counters.
+    _send_BM1370((TYPE_CMD | GROUP_SINGLE | CMD_READ), (uint8_t[]){0x00, BM_NONCE_ERROR_CNT}, 2, true);
+    SERIAL_clear_buffer()
+    resp = SERIAL_rx(buf, 11, 10);
+    if (resp)
+        cnt_err = _u8be_to_u32le(resp->data);
+
+    _send_BM1370((TYPE_CMD | GROUP_SINGLE | CMD_READ), (uint8_t[]){0x00, BM_UNK_CNT_90}, 2, true);
+    cnt_tmr[0] = esp_timer_get_time() - cnt_tmr[0];
+    SERIAL_clear_buffer()
+    resp = SERIAL_rx(buf, 11, 10);
+    if (resp)
+        cnt_val[0] = _u8be_to_u32le(resp->data);
+
+    for (int i = 0; i < 5; i ++) {
+        _send_BM1370((TYPE_CMD | GROUP_SINGLE | CMD_READ), (uint8_t[]){0x00, BM_UNK_CNT_88+i}, 2, true);
+        cnt_tmr[1 + i] = esp_timer_get_time() - cnt_tmr[1 + i];
+        SERIAL_clear_buffer()
+        resp = SERIAL_rx(buf, 11, 10);
+        if (resp)
+            cnt_val[1 + i] = _u8be_to_u32le(resp->data);
+    }
+
+    ESP_LOGW(TAG, "CNT %02X: %ld", BM_NONCE_ERROR_CNT, cnt_err);
+    ESP_LOGW(TAG, "CNT %02X: %ld (%ld)", BM_UNK_CNT_90, _calc_counter_val(cnt_val[0], cnt_tmr[0], freq_khz, false), cnt_val[0]);
+    for (int i = 0; i < 4; i++) {
+        ESP_LOGW(TAG, "CNT %02X: %ld (%ld)", BM_UNK_CNT_88 + i, _calc_counter_val(cnt_val[1 + i], cnt_tmr[1 + i], freq_khz, true), cnt_val[1 + i]);
+    }
+    float tot = (float)_calc_counter_val(cnt_val[0], cnt_tmr[0], freq_khz, false);
+    float err = (float)cnt_err;
+    return {tot,err};
+}
 
 // reset the BM1370 via the RTS line
 static void _reset(void)
