@@ -459,7 +459,8 @@ void self_test(void * pvParameters)
     bm_job job = construct_bm_job(&notify_message, merkle_root, 0x1fffe000);
 
     uint8_t difficulty_mask = 8;
-    get_hashrate_err();
+    reset_counters();
+
 
     //(*GLOBAL_STATE->ASIC_functions.set_difficulty_mask_fn)(difficulty_mask);
     ASIC_set_job_difficulty_mask(GLOBAL_STATE, difficulty_mask);
@@ -473,7 +474,7 @@ void self_test(void * pvParameters)
     double sum = 0;
     double duration = 0;
     double hash_rate = 0;
-    double hashtest_timeout = 5;
+    double hashtest_timeout = 30;
 
     
 
@@ -491,7 +492,11 @@ void self_test(void * pvParameters)
         duration = (double) (esp_timer_get_time() - start) / 1000000;
     }
 
+    
     ESP_LOGI(TAG, "Hashrate: %f", hash_rate);
+    float gh_hash = get_hashrate_cnt();
+    float gh_err = get_hashrate_error_cnt();
+    float gh_tot = gh_hash+gh_err;
 
     float hashrate_test_percentage_target = 0.85;
     float expected_hashrate_mhs = (float)GLOBAL_STATE->POWER_MANAGEMENT_MODULE.frequency_value;
@@ -514,9 +519,8 @@ void self_test(void * pvParameters)
             break;
         default:
     }
-    ASIC_set_job_difficulty_mask(GLOBAL_STATE, 256);
-    SERIAL_clear_buffer();
-    get_hashrate_err();
+
+    ESP_LOGI(TAG, "%f %f %f %f",gh_hash/(float)duration,gh_err/(float)duration,gh_tot/(float)duration,expected_hashrate_mhs/1000.0);
 
     if (hash_rate < hashrate_test_percentage_target * (expected_hashrate_mhs/1000.0) ){
         display_msg("HASHRATE:FAIL", GLOBAL_STATE);

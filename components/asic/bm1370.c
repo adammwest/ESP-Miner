@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <arpa/inet.h>
+#include <inttypes.h>
 
 #define BM1370_CHIP_ID 0x1370
 #define BM1370_CHIP_ID_RESPONSE_LENGTH 11
@@ -335,123 +336,32 @@ static uint8_t _send_init(uint64_t frequency, uint16_t asic_count)
     return chip_counter;
 }
 
-static uint32_t _calc_counter_val(uint32_t counter, int64_t timer, uint32_t freq_khz, bool cnt8x)
-{
-    uint32_t val = 0;
 
-    if (!cnt8x)
-        val = (double)counter * 0x100 / 0xFF * 0x100000000ull / (BM1370_SMALL_CORE_COUNT * freq_khz) / ((double)timer / 1000000) * 10.0;
-    else
-        val = (double)counter * 0x100000000ull / (BM1370_SMALL_CORE_COUNT * freq_khz / 4) / ((double)timer / 1000000) * 10.0;
-
-    return val;
-}
-
-void BM1370_get_counters(GlobalState * gstate)
-{
-    int64_t  cnt_tmr[6];
-    uint32_t cnt_val[6] = {0};
-    uint32_t  cnt_err = 0;
-    cmd_reply_v *resp;
-
-    // Reset counters.
-    _send_BM1370(CSW, (uint8_t[]){0x00, BM_UNK_CNT_90, 0x00, 0x00, 0x00, 0x00}, 6, true);
-    cnt_tmr[0] = esp_timer_get_time();
-    for (int i = 0; i < 5; i ++) {
-        _send_BM1370(CSW, (uint8_t[]){0x00, BM_UNK_CNT_88 + i, 0x00, 0x00, 0x00, 0x00}, 6, true);
-        cnt_tmr[1 + i] = esp_timer_get_time();
-    }
-
-    vTaskDelay(2000 / portTICK_PERIOD_MS);
-
-    pthread_mutex_lock(&uart_rcv_lock);
-
-    // Get counters.
-    _send_BM1370(CSR, (uint8_t[]){0x00, BM_NONCE_ERROR_CNT}, 2, true);
-    resp = SERIAL_rx(0x00, BM_NONCE_ERROR_CNT, 11);
-    if (resp)
-        cnt_err = _u8be_to_u32le(resp->data);
-
-        _send_BM1370(CSR, (uint8_t[]){0x00, BM_UNK_CNT_90}, 2, true);
-    cnt_tmr[0] = esp_timer_get_time() - cnt_tmr[0];
-    resp = _get_response(0x00, BM_UNK_CNT_90, 11);
-    if (resp)
-        cnt_val[0] = _u8be_to_u32le(resp->data);
-
-    for (int i = 0; i < 5; i ++) {
-        _send_BM1370(CSR, (uint8_t[]){0x00, BM_UNK_CNT_88 + i}, 2, true);
-        cnt_tmr[1 + i] = esp_timer_get_time() - cnt_tmr[1 + i];
-        resp = _get_response(0x00, BM_UNK_CNT_88 + i, 11);
-        if (resp)
-            cnt_val[1 + i] = _u8be_to_u32le(resp->data);
-    }
-
-    pthread_mutex_unlock(&uart_rcv_lock);
-
-    uint32_t freq_khz = (uint32_t)gstate->POWER_MANAGEMENT_MODULE.frequency_value * 1000;
-
-    ESP_LOGW(TAG, "CNT %02X: %ld", BM_NONCE_ERROR_CNT, cnt_err);
-
-    ESP_LOGW(TAG, "CNT %02X: %ld (%ld)", BM_UNK_CNT_90, _calc_counter_val(cnt_val[0], cnt_tmr[0], freq_khz, false), cnt_val[0]);
-
-    for (int i = 0; i < 4; i++) {
-        ESP_LOGW(TAG, "CNT %02X: %ld (%ld)", BM_UNK_CNT_88 + i, _calc_counter_val(cnt_val[1 + i], cnt_tmr[1 + i], freq_khz, true), cnt_val[1 + i]);
-    }
-}
-
-
-
-float * _BM1370_get_hashrate_counter_registers() {
-
-    // CLEAR 
-    _send_BM1370((TYPE_CMD | GROUP_SINGLE | CMD_WRITE), (uint8_t[]){0x00, BM_UNK_CNT_90, 0x00, 0x00, 0x00, 0x00}, 6, true);
-    cnt_tmr[0] = esp_timer_get_time();
-    for (int i = 0; i < 5; i ++) {
-        _send_BM1370((TYPE_CMD | GROUP_SINGLE | CMD_WRITE), (uint8_t[]){0x00, BM_UNK_CNT_88 + i, 0x00, 0x00, 0x00, 0x00}, 6, true);
-        cnt_tmr[1 + i] = esp_timer_get_time();
-    }
-
-    vTaskDelay(2000 / portTICK_PERIOD_MS);
-
-
-
-    uint32_t freq_khz = (uint32_t)gstate->POWER_MANAGEMENT_MODULE.frequency_value * 1000;
-    uint32_t  cnt = 0;
-    _send_BM1370((TYPE_CMD | GROUP_SINGLE | CMD_WRITE), (uint8_t[]){0x00, _register}, 2, true);
-    
-    char uint8_t buf[11] = {0};
-
-    // Get counters.
-    _send_BM1370((TYPE_CMD | GROUP_SINGLE | CMD_READ), (uint8_t[]){0x00, BM_NONCE_ERROR_CNT}, 2, true);
-    SERIAL_clear_buffer()
-    resp = SERIAL_rx(buf, 11, 10);
-    if (resp)
-        cnt_err = _u8be_to_u32le(resp->data);
-
+float get_hashrate_cnt() {
+    uint8_t buf[9] = {0};
     _send_BM1370((TYPE_CMD | GROUP_SINGLE | CMD_READ), (uint8_t[]){0x00, BM_UNK_CNT_90}, 2, true);
-    cnt_tmr[0] = esp_timer_get_time() - cnt_tmr[0];
-    SERIAL_clear_buffer()
-    resp = SERIAL_rx(buf, 11, 10);
-    if (resp)
-        cnt_val[0] = _u8be_to_u32le(resp->data);
+    int resp = SERIAL_rx(buf, 11, 10);
+    int value = (int)((buf[4] << 8) + buf[5]);
+    ESP_LOGI(TAG, "CNT     %02X: [%02x %02x %02x %02x %02x %02x %02x %02x %02x]", BM_UNK_CNT_90, buf[0], buf[1], buf[2], buf[3], buf[4],buf[5],buf[6],buf[7], buf[8]);
+    float hashes = 4.096*(float)value;
+    ESP_LOGW(TAG,"hashes %f",hashes);
+    return hashes;
+}
 
-    for (int i = 0; i < 5; i ++) {
-        _send_BM1370((TYPE_CMD | GROUP_SINGLE | CMD_READ), (uint8_t[]){0x00, BM_UNK_CNT_88+i}, 2, true);
-        cnt_tmr[1 + i] = esp_timer_get_time() - cnt_tmr[1 + i];
-        SERIAL_clear_buffer()
-        resp = SERIAL_rx(buf, 11, 10);
-        if (resp)
-            cnt_val[1 + i] = _u8be_to_u32le(resp->data);
-    }
+float get_hashrate_error_cnt() {
+    uint8_t buf[9] = {0};
+    _send_BM1370((TYPE_CMD | GROUP_SINGLE | CMD_READ), (uint8_t[]){0x00, BM_NONCE_ERROR_CNT}, 2, true);
+    int resp = SERIAL_rx(buf, 11, 10);
+    int value = (int)((buf[4] << 8) + buf[5]);
+    ESP_LOGI(TAG, "CNT ERR %02X: [%02x %02x %02x %02x %02x %02x %02x %02x %02x]", BM_NONCE_ERROR_CNT, buf[0], buf[1], buf[2], buf[3], buf[4],buf[5],buf[6],buf[7], buf[8]);
+    float hashes_error = 4.096*(float)value;
+    ESP_LOGW(TAG,"hashes error %f",hashes_error);
+    return hashes_error;
+}
 
-    ESP_LOGW(TAG, "CNT %02X: %ld", BM_NONCE_ERROR_CNT, cnt_err);
-    ESP_LOGW(TAG, "CNT %02X: %ld (%ld)", BM_UNK_CNT_90, _calc_counter_val(cnt_val[0], cnt_tmr[0], freq_khz, false), cnt_val[0]);
-    for (int i = 0; i < 4; i++) {
-        ESP_LOGW(TAG, "CNT %02X: %ld (%ld)", BM_UNK_CNT_88 + i, _calc_counter_val(cnt_val[1 + i], cnt_tmr[1 + i], freq_khz, true), cnt_val[1 + i]);
-    }
-    float tot = (float)_calc_counter_val(cnt_val[0], cnt_tmr[0], freq_khz, false);
-    float err = (float)cnt_err;
-    return {tot,err};
+void reset_counters() {
+    _send_BM1370((TYPE_CMD | GROUP_SINGLE | CMD_WRITE), (uint8_t[]){0x00, BM_UNK_CNT_90,0x00,0x00,0x00,0x00}, 6, true);
+    _send_BM1370((TYPE_CMD | GROUP_SINGLE | CMD_WRITE), (uint8_t[]){0x00, BM_NONCE_ERROR_CNT,0x00,0x00,0x00,0x00}, 6, true);
 }
 
 // reset the BM1370 via the RTS line
