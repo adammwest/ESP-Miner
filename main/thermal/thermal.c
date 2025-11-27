@@ -1,83 +1,108 @@
 #include "thermal.h"
 
-#define INTERNAL_OFFSET 5 //degrees C
+#include "esp_log.h"
+#include "esp_check.h"
 
+#include "EMC2101.h"
+#include "EMC2103.h"
+#include "EMC2302.h"
+#include "TMP1075.h"
 
-esp_err_t Thermal_init(DeviceModel device_model, bool polarity) {
-        //init the EMC2101, if we have one
-    switch (device_model) {
-        case DEVICE_MAX:
-        case DEVICE_ULTRA:
-        case DEVICE_SUPRA:
-            EMC2101_init(polarity);
-            break;
-        case DEVICE_GAMMA:
-            EMC2101_init(polarity);
-            EMC2101_set_ideality_factor(EMC2101_IDEALITY_1_0319);
-            EMC2101_set_beta_compensation(EMC2101_BETA_11);
-            break;
-        case DEVICE_GAMMATURBO:
-            EMC2103_init(polarity);
-            break;
-        default:
+static const char * TAG = "thermal";
+
+esp_err_t Thermal_init(DeviceConfig * DEVICE_CONFIG)
+{
+    if (DEVICE_CONFIG->EMC2101) {
+        ESP_RETURN_ON_ERROR(EMC2101_init(DEVICE_CONFIG->temp_offset), TAG, "Failed to initialise EMC2101");
+        // TODO: Improve this check.
+        if (DEVICE_CONFIG->emc_ideality_factor != 0x00) {
+            ESP_LOGI(TAG, "EMC2101 configuration: Ideality Factor: %02x, Beta Compensation: %02x", DEVICE_CONFIG->emc_ideality_factor, DEVICE_CONFIG->emc_beta_compensation);
+            EMC2101_set_ideality_factor(DEVICE_CONFIG->emc_ideality_factor);
+            EMC2101_set_beta_compensation(DEVICE_CONFIG->emc_beta_compensation);
+        }
     }
+    if (DEVICE_CONFIG->EMC2103) {
+        ESP_RETURN_ON_ERROR(EMC2103_init(DEVICE_CONFIG->temp_offset), TAG, "Failed to initialise EMC2103");
+    }
+    if (DEVICE_CONFIG->EMC2302) {
+        ESP_RETURN_ON_ERROR(EMC2302_init(), TAG, "Failed to initialise EMC2302");
+    }
+    if (DEVICE_CONFIG->TMP1075) {
+        ESP_RETURN_ON_ERROR(TMP1075_init(DEVICE_CONFIG->temp_offset), TAG, "Failed to initialise TMP1075");
+    }
+
     return ESP_OK;
-    
 }
 
 //percent is a float between 0.0 and 1.0
-esp_err_t Thermal_set_fan_percent(DeviceModel device_model, float percent) {
-
-    switch (device_model) {
-        case DEVICE_MAX:
-        case DEVICE_ULTRA:
-        case DEVICE_SUPRA:
-        case DEVICE_GAMMA:
-            EMC2101_set_fan_speed(percent);
-            break;
-        case DEVICE_GAMMATURBO:
-            EMC2103_set_fan_speed(percent);
-            break;
-        default:
+esp_err_t Thermal_set_fan_percent(DeviceConfig * DEVICE_CONFIG, float percent)
+{
+    if (DEVICE_CONFIG->EMC2101) {
+        return EMC2101_set_fan_speed(percent);
+    }
+    if (DEVICE_CONFIG->EMC2103) {
+        return EMC2103_set_fan_speed(percent);
+    }
+    if (DEVICE_CONFIG->EMC2302) {
+        EMC2302_set_fan_speed(percent);
     }
     return ESP_OK;
 }
 
-uint16_t Thermal_get_fan_speed(DeviceModel device_model) {
-    switch (device_model) {
-        case DEVICE_MAX:
-        case DEVICE_ULTRA:
-        case DEVICE_SUPRA:
-        case DEVICE_GAMMA:
-            return EMC2101_get_fan_speed();
-        case DEVICE_GAMMATURBO:
-            return EMC2103_get_fan_speed();
-        default:
+uint16_t Thermal_get_fan_speed(DeviceConfig * DEVICE_CONFIG) 
+{
+    if (DEVICE_CONFIG->EMC2101) {
+        return EMC2101_get_fan_speed();
+    }
+    if (DEVICE_CONFIG->EMC2103) {
+        return EMC2103_get_fan_speed();
+    }
+    if (DEVICE_CONFIG->EMC2302) {
+        return EMC2302_get_fan_speed();
     }
     return 0;
 }
 
-float Thermal_get_chip_temp(GlobalState * GLOBAL_STATE) {
+uint16_t Thermal_get_fan2_speed(DeviceConfig * DEVICE_CONFIG) 
+{
+    if (DEVICE_CONFIG->EMC2302) {
+        return EMC2302_get_fan2_speed();
+    }
+    return 0;
+}
+
+float Thermal_get_chip_temp(GlobalState * GLOBAL_STATE)
+{
     if (!GLOBAL_STATE->ASIC_initalized) {
         return -1;
     }
 
-    switch (GLOBAL_STATE->device_model) {
-        case DEVICE_MAX:
+    if (GLOBAL_STATE->DEVICE_CONFIG.EMC2101) {
+        if (GLOBAL_STATE->DEVICE_CONFIG.emc_internal_temp) {
+            return EMC2101_get_internal_temp();
+        } else {
             return EMC2101_get_external_temp();
-        case DEVICE_ULTRA:
-        case DEVICE_SUPRA:
-            if (GLOBAL_STATE->board_version >= 402 && GLOBAL_STATE->board_version <= 499) {
-                return EMC2101_get_external_temp();
-            } else {
-                return EMC2101_get_internal_temp() + INTERNAL_OFFSET;
-            }
-        case DEVICE_GAMMA:
-            return EMC2101_get_external_temp();
-        case DEVICE_GAMMATURBO:
-            return EMC2103_get_external_temp();
-        default:
+        }
     }
+    if (GLOBAL_STATE->DEVICE_CONFIG.EMC2103) {
+        return EMC2103_get_external_temp();
+    }
+    if (GLOBAL_STATE->DEVICE_CONFIG.TMP1075) {
+        return TMP1075_read_temperature(0);
+    }
+    return -1;
+}
 
+float Thermal_get_chip_temp2(GlobalState * GLOBAL_STATE)
+{
+    if (!GLOBAL_STATE->ASIC_initalized) {
+        return -1;
+    }
+    if (GLOBAL_STATE->DEVICE_CONFIG.EMC2103) {
+        return EMC2103_get_external_temp2();
+    }
+    if (GLOBAL_STATE->DEVICE_CONFIG.TMP1075) {
+        return TMP1075_read_temperature(1);
+    }
     return -1;
 }
