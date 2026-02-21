@@ -11,23 +11,20 @@
 #include "device_config.h"
 #include "frequency_transition_bmXX.h"
 
-static const double NONCE_SPACE = 4294967296.0; //  2^32
-
 static const char *TAG = "asic";
 
 uint8_t ASIC_init(GlobalState * GLOBAL_STATE)
 {
     ESP_LOGI(TAG, "Initializing %dx %s", GLOBAL_STATE->DEVICE_CONFIG.family.asic_count, GLOBAL_STATE->DEVICE_CONFIG.family.asic.name);
-
     switch (GLOBAL_STATE->DEVICE_CONFIG.family.asic.id) {
         case BM1397:
-            return BM1397_init(GLOBAL_STATE->POWER_MANAGEMENT_MODULE.frequency_value, GLOBAL_STATE->DEVICE_CONFIG.family.asic_count, GLOBAL_STATE->DEVICE_CONFIG.family.asic.difficulty);
+            return BM1397_init(GLOBAL_STATE->POWER_MANAGEMENT_MODULE.frequency_value, GLOBAL_STATE->DEVICE_CONFIG.family.asic_count, GLOBAL_STATE->DEVICE_CONFIG.family.asic.difficulty, (int16_t)GLOBAL_STATE->DEVICE_CONFIG.family.asic.core_count);
         case BM1366:
-            return BM1366_init(GLOBAL_STATE->POWER_MANAGEMENT_MODULE.frequency_value, GLOBAL_STATE->DEVICE_CONFIG.family.asic_count, GLOBAL_STATE->DEVICE_CONFIG.family.asic.difficulty);
+            return BM1366_init(GLOBAL_STATE->POWER_MANAGEMENT_MODULE.frequency_value, GLOBAL_STATE->DEVICE_CONFIG.family.asic_count, GLOBAL_STATE->DEVICE_CONFIG.family.asic.difficulty, (int16_t)GLOBAL_STATE->DEVICE_CONFIG.family.asic.core_count);
         case BM1368:
-            return BM1368_init(GLOBAL_STATE->POWER_MANAGEMENT_MODULE.frequency_value, GLOBAL_STATE->DEVICE_CONFIG.family.asic_count, GLOBAL_STATE->DEVICE_CONFIG.family.asic.difficulty);
+            return BM1368_init(GLOBAL_STATE->POWER_MANAGEMENT_MODULE.frequency_value, GLOBAL_STATE->DEVICE_CONFIG.family.asic_count, GLOBAL_STATE->DEVICE_CONFIG.family.asic.difficulty, (int16_t)GLOBAL_STATE->DEVICE_CONFIG.family.asic.core_count);
         case BM1370:
-            return BM1370_init(GLOBAL_STATE->POWER_MANAGEMENT_MODULE.frequency_value, GLOBAL_STATE->DEVICE_CONFIG.family.asic_count, GLOBAL_STATE->DEVICE_CONFIG.family.asic.difficulty);
+            return BM1370_init(GLOBAL_STATE->POWER_MANAGEMENT_MODULE.frequency_value, GLOBAL_STATE->DEVICE_CONFIG.family.asic_count, GLOBAL_STATE->DEVICE_CONFIG.family.asic.difficulty, (int16_t)GLOBAL_STATE->DEVICE_CONFIG.family.asic.core_count);
     }
     return ESP_OK;
 }
@@ -117,16 +114,33 @@ bool ASIC_set_frequency(GlobalState * GLOBAL_STATE, float frequency)
     return false;
 }
 
+double ASIC_calculate_bm_timeout_ms(GlobalState * GLOBAL_STATE, float max_versions, float timeout_percent)
+{
+    float freq = GLOBAL_STATE->POWER_MANAGEMENT_MODULE.frequency_value;
+    int cores = _largest_power_of_two(GLOBAL_STATE->DEVICE_CONFIG.family.asic.core_count);
+    int small_cores = _largest_power_of_two(GLOBAL_STATE->DEVICE_CONFIG.family.asic.small_core_count);
+    int asic_count = _largest_power_of_two(GLOBAL_STATE->DEVICE_CONFIG.family.asic_count);
+    double nonce_space_divided = NONCE_SPACE/(double)cores/(double)asic_count;
+
+    // for version rolling chips
+    double midstates = small_cores/cores;
+
+    // this applies to bitmain chips only, calulates the timeout in ms
+    return timeout_percent * (max_versions / midstates) * ASIC_SET_NONCE_SPACE_PERCENT * (nonce_space_divided / freq);
+}
+
 double ASIC_get_asic_job_frequency_ms(GlobalState * GLOBAL_STATE)
 {
     switch (GLOBAL_STATE->DEVICE_CONFIG.family.asic.id) {
         case BM1397:
-            // no version-rolling so same Nonce Space is splitted between Small Cores
-            return (NONCE_SPACE / (double) (GLOBAL_STATE->POWER_MANAGEMENT_MODULE.frequency_value * GLOBAL_STATE->DEVICE_CONFIG.family.asic.small_core_count * 1000)) / (double) GLOBAL_STATE->DEVICE_CONFIG.family.asic_count;
+            // no version-rolling so same Nonce Space is splitted between Big Cores
+            return ASIC_calculate_bm_timeout_ms(GLOBAL_STATE, 4.0, 1.0);
         case BM1366:
+            // ASIC_calculate_bm_timeout_ms(GLOBAL_STATE, GLOBAL_STATE->version_mask >> 13, 1.0);
             return 2000 / GLOBAL_STATE->DEVICE_CONFIG.family.asic_count;
         case BM1368:
         case BM1370:
+            // ASIC_calculate_bm_timeout_ms(GLOBAL_STATE, GLOBAL_STATE->version_mask >> 13, 1.0);
             return 500 / GLOBAL_STATE->DEVICE_CONFIG.family.asic_count;
     }
     return 500;

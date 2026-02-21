@@ -149,6 +149,13 @@ void BM1397_set_version_mask(uint32_t version_mask) {
     // placeholder
 }
 
+void BM1397_set_nonce_space(double nonce_percent, float frequency, uint16_t asic_count, uint16_t big_cores) 
+{   
+    // HCN for BM1397 is register 0x14, but seemingly it doesnt do anything
+    // placeholder
+}
+
+
 void BM1397_send_hash_frequency(float target_freq)
 {
     uint8_t fb_divider, refdiv, postdiv1, postdiv2;
@@ -177,7 +184,7 @@ void BM1397_send_hash_frequency(float target_freq)
     ESP_LOGI(TAG, "Setting Frequency to %g MHz (%g)", target_freq, frequency);
 }
 
-uint8_t BM1397_init(float frequency, uint16_t asic_count, uint16_t difficulty)
+uint8_t BM1397_init(float frequency, uint16_t asic_count, uint16_t difficulty, uint16_t big_cores)
 {
     // send the init command
     _send_read_address();
