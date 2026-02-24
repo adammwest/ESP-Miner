@@ -258,7 +258,7 @@ uint8_t BM1366_init(float frequency, uint16_t asic_count, uint16_t difficulty, u
 
     do_frequency_transition(frequency, BM1366_send_hash_frequency);
 
-    BM1366_set_nonce_space(ASIC_SET_NONCE_SPACE_PERCENT, frequency, asic_count, big_cores);
+    BM1366_set_nonce_space(1.0, frequency, asic_count, big_cores);
 
     unsigned char init795[11] = {0x55, 0xAA, 0x51, 0x09, 0x00, 0xA4, 0x90, 0x00, 0xFF, 0xFF, 0x1C};
     _send_simple(init795, 11);

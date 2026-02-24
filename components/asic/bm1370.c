@@ -283,7 +283,7 @@ uint8_t BM1370_init(float frequency, uint16_t asic_count, uint16_t difficulty, u
     //ramp up the hash frequency
     do_frequency_transition(frequency, BM1370_send_hash_frequency);
 
-    BM1370_set_nonce_space(ASIC_SET_NONCE_SPACE_PERCENT, frequency, asic_count, big_cores);
+    BM1370_set_nonce_space(1.0, frequency, asic_count, big_cores);
 
     return chip_counter;
 }
