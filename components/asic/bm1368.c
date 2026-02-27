@@ -163,7 +163,7 @@ void BM1368_send_hash_frequency(float target_freq)
     ESP_LOGI(TAG, "Setting Frequency to %g MHz (%g)", target_freq, new_freq);
 }
 
-uint8_t BM1368_init(float frequency, uint16_t asic_count, uint16_t difficulty, uint16_t big_cores)
+uint8_t BM1368_init(float frequency, uint16_t asic_count, uint16_t difficulty, uint16_t cores)
 {
     // set version mask
     for (int i = 0; i < 4; i++) {
@@ -220,7 +220,7 @@ uint8_t BM1368_init(float frequency, uint16_t asic_count, uint16_t difficulty, u
 
     do_frequency_transition(frequency, BM1368_send_hash_frequency);
 
-    BM1368_set_nonce_space(1.0, frequency, asic_count, big_cores);
+    BM1368_set_nonce_space(1.0, frequency, asic_count, cores);
     BM1368_set_version_mask(STRATUM_DEFAULT_VERSION_MASK);
 
     return chip_counter;

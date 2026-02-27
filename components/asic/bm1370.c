@@ -181,7 +181,7 @@ void BM1370_send_hash_frequency(float target_freq)
     ESP_LOGI(TAG, "Setting Frequency to %g MHz (%g)", target_freq, frequency);
 }
 
-uint8_t BM1370_init(float frequency, uint16_t asic_count, uint16_t difficulty, uint16_t big_cores)
+uint8_t BM1370_init(float frequency, uint16_t asic_count, uint16_t difficulty, uint16_t cores)
 {
     // set version mask
     for (int i = 0; i < 3; i++) {
@@ -278,7 +278,7 @@ uint8_t BM1370_init(float frequency, uint16_t asic_count, uint16_t difficulty, u
     //ramp up the hash frequency
     do_frequency_transition(frequency, BM1370_send_hash_frequency);
 
-    BM1370_set_nonce_space(1.0, frequency, asic_count, big_cores);
+    BM1370_set_nonce_space(1.0, frequency, asic_count, cores);
 
     return chip_counter;
 }
